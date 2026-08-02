@@ -21,19 +21,13 @@ from telegram.constants import ParseMode
 # ==================== CONFIGURATION ====================
 # 👇 REPLACE THESE WITH YOUR ACTUAL VALUES
 BOT_TOKEN = "8913447240:AAFcmpRjKZWhCjKfNVzD4dE9p1jWVDiowgI"  # Get from @BotFather
-ADMIN_IDS = [8896981303]  # Your Telegram User ID
+ADMIN_IDS = [8896981303]
 
-# ==================== OR USE ENVIRONMENT VARIABLES (UNCOMMENT BELOW) ====================
-# BOT_TOKEN = os.environ.get("BOT_TOKEN")
-# if not BOT_TOKEN:
-#     BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-# 
-# ADMIN_IDS = []
-# admin_ids_str = os.environ.get("ADMIN_IDS", "")
-# if admin_ids_str:
-#     ADMIN_IDS = [int(x.strip()) for x in admin_ids_str.split(",") if x.strip()]
-# else:
-#     ADMIN_IDS = [123456789]
+# Force Join Channels
+FORCE_JOIN_CHANNELS = [
+    "@skhbyorj365",   # Channel 1
+    "@skhbyorj3659",  # Channel 2 (Official sujan giveaway)
+]
 
 GET_REDEEM_CODE = 1
 
@@ -337,7 +331,7 @@ class RedeemBot:
     def setup(self):
         self.application = Application.builder().token(BOT_TOKEN).build()
         
-        # Commands
+        # User commands
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
         self.application.add_handler(CommandHandler("profile", self.profile_command))
@@ -362,7 +356,7 @@ class RedeemBot:
         # Callbacks
         self.application.add_handler(CallbackQueryHandler(self.callback_handler))
 
-        # Conversation
+        # Conversation for adding codes
         conv = ConversationHandler(
             entry_points=[CommandHandler("addcode", self.addcode_command)],
             states={
@@ -375,12 +369,75 @@ class RedeemBot:
         self.application.add_error_handler(self.error_handler)
         logger.info("Bot handlers set up")
 
-    # ==================== CALLBACKS ====================
+    # ==================== FORCE JOIN CHECK ====================
+    async def check_force_join(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+        """Check if user has joined all required channels. Returns True if all joined."""
+        user_id = update.effective_user.id
+        
+        # If user is admin, skip force join check
+        if user_id in ADMIN_IDS:
+            return True
+            
+        not_joined = []
+        
+        for channel in FORCE_JOIN_CHANNELS:
+            try:
+                chat_member = await context.bot.get_chat_member(chat_id=channel, user_id=user_id)
+                status = chat_member.status
+                if status in ["left", "kicked", "restricted"]:
+                    not_joined.append(channel)
+            except Exception as e:
+                logger.error(f"Error checking channel {channel}: {e}")
+                not_joined.append(channel)
+        
+        if not_joined:
+            keyboard = []
+            for channel in not_joined:
+                clean_channel = channel.replace('@', '')
+                invite_link = f"https://t.me/{clean_channel}"
+                keyboard.append([InlineKeyboardButton(f"📢 Join {channel}", url=invite_link)])
+            
+            keyboard.append([InlineKeyboardButton("✅ I've Joined", callback_data="check_join")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Delete previous message if exists
+            if update.message:
+                await update.message.delete()
+            elif update.callback_query:
+                await update.callback_query.message.delete()
+            
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "🔒 **Please Join Required Channels**\n\n"
+                    "To use this bot, you must join all the following channels:\n\n"
+                    f"{chr(10).join(['• ' + ch for ch in not_joined])}\n\n"
+                    "After joining, click the button below to continue."
+                ),
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
+            )
+            return False
+        
+        return True
+
+    # ==================== CALLBACK HANDLER ====================
     async def callback_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
+        
         user_id = update.effective_user.id
         data = query.data
+        
+        # Handle check_join callback
+        if data == "check_join":
+            if await self.check_force_join(update, context):
+                await self._show_start(query, context, user_id)
+            return
+        
+        # Check force join for all other callbacks
+        if not await self.check_force_join(update, context):
+            return
         
         try:
             if data == "profile":
@@ -716,6 +773,10 @@ class RedeemBot:
 
     # ==================== COMMAND HANDLERS ====================
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # Check force join
+        if not await self.check_force_join(update, context):
+            return
+        
         user = update.effective_user
         user_id = user.id
         
@@ -762,6 +823,9 @@ class RedeemBot:
         await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.check_force_join(update, context):
+            return
+        
         user_id = update.effective_user.id
         text = "📚 **Help**\n\n/start - Start bot\n/profile - View profile\n/referrals - View referrals\n/withdraw - Withdraw credits\n/history - View history\n/mycodes - View codes\n/help - This message\n\n"
         if user_id in ADMIN_IDS:
@@ -769,6 +833,9 @@ class RedeemBot:
         await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
     async def profile_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.check_force_join(update, context):
+            return
+        
         user_id = update.effective_user.id
         user_data = self.db.get_user(user_id)
         if not user_data:
@@ -790,6 +857,9 @@ class RedeemBot:
         await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
     async def referrals_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.check_force_join(update, context):
+            return
+        
         user_id = update.effective_user.id
         referrals = self.db.get_referrals_list(user_id)
         count = len(referrals)
@@ -809,6 +879,9 @@ class RedeemBot:
         await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
     async def withdraw_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.check_force_join(update, context):
+            return
+        
         user_id = update.effective_user.id
         user_data = self.db.get_user(user_id)
         if not user_data:
@@ -833,6 +906,9 @@ class RedeemBot:
         )
 
     async def history_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.check_force_join(update, context):
+            return
+        
         user_id = update.effective_user.id
         history = self.db.get_withdrawal_history(user_id)
         if not history:
@@ -848,6 +924,9 @@ class RedeemBot:
         await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
     async def mycodes_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.check_force_join(update, context):
+            return
+        
         user_id = update.effective_user.id
         codes = self.db.get_private_codes_for_user(user_id)
         if not codes:
@@ -863,6 +942,9 @@ class RedeemBot:
 
     # ==================== ADMIN COMMANDS ====================
     async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.check_force_join(update, context):
+            return
+        
         user_id = update.effective_user.id
         if user_id not in ADMIN_IDS:
             await update.message.reply_text("❌ Unauthorized.")
