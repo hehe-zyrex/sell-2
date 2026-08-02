@@ -19,14 +19,21 @@ from telegram.ext import (
 from telegram.constants import ParseMode
 
 # ==================== CONFIGURATION ====================
-BOT_TOKEN = os.environ.get("8913447240:AAFcmpRjKZWhCjKfNVzD4dE9p1jWVDiowgI")
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN environment variable is required!")
+# 👇 REPLACE THESE WITH YOUR ACTUAL VALUES
+BOT_TOKEN = "8913447240:AAFcmpRjKZWhCjKfNVzD4dE9p1jWVDiowgI"  # Get from @BotFather
+ADMIN_IDS = [8896981303]  # Your Telegram User ID
 
-ADMIN_IDS = []
-admin_ids_str = os.environ.get("ADMIN_IDS", "8896981303")
-if admin_ids_str:
-    ADMIN_IDS = [int(x.strip()) for x in admin_ids_str.split(",") if x.strip()]
+# ==================== OR USE ENVIRONMENT VARIABLES (UNCOMMENT BELOW) ====================
+# BOT_TOKEN = os.environ.get("BOT_TOKEN")
+# if not BOT_TOKEN:
+#     BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+# 
+# ADMIN_IDS = []
+# admin_ids_str = os.environ.get("ADMIN_IDS", "")
+# if admin_ids_str:
+#     ADMIN_IDS = [int(x.strip()) for x in admin_ids_str.split(",") if x.strip()]
+# else:
+#     ADMIN_IDS = [123456789]
 
 GET_REDEEM_CODE = 1
 
